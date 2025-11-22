@@ -3,6 +3,7 @@ import { SocketContext, socket } from './SocketContext';
 import RoomList from './components/RoomList';
 import ChatRoom from './components/ChatRoom';
 import ErrorBoundary from './components/ErrorBoundary';
+import { APP_VERSION } from './constants';
 
 function App() {
   const [isConnected, setIsConnected] = useState(socket.connected);
@@ -70,6 +71,7 @@ function App() {
             onJoin={handleJoinRoom}
           />
         )}
+        <div className="app-version">v{APP_VERSION}</div>
       </div>
     </SocketContext.Provider>
   );
