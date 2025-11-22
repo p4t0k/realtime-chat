@@ -16,7 +16,7 @@ function App() {
 
     function onDisconnect() {
       setIsConnected(false);
-      setCurrentRoom(null);
+      // Don't clear currentRoom here to allow for reconnection
     }
 
     function onWelcome(user) {
