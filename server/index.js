@@ -3,12 +3,14 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
+import config from './config.js';
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
+    maxHttpBufferSize: config.MAX_HTTP_BUFFER_SIZE,
     cors: {
-        origin: "http://localhost:5173",
+        origin: config.CORS_ORIGIN,
         methods: ["GET", "POST"]
     }
 });
@@ -17,8 +19,22 @@ const io = new Server(server, {
 // Data Stores
 const rooms = {}; // { roomId: { id, name, users: [socketId] } }
 const users = {}; // { socketId: { id, nickname, roomId, x, y, clientId } }
-const userIdentityStore = new Map(); // { clientId: { nickname } }
+const userIdentityStore = new Map(); // { clientId: { nickname, lastSeen } }
 const usedNicknames = new Set();
+
+// Cleanup old identities every hour
+setInterval(() => {
+    const now = Date.now();
+    for (const [clientId, identity] of userIdentityStore.entries()) {
+        if (now - identity.lastSeen > config.IDENTITY_TTL) {
+            userIdentityStore.delete(clientId);
+            // We could also free the nickname from usedNicknames if we tracked it better,
+            // but usedNicknames is currently global and simple. 
+            // Ideally, we should check if any active user has this nickname before freeing it.
+            // For now, let's just clean the identity store to save memory.
+        }
+    }
+}, 60 * 60 * 1000); // Run every hour
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -30,7 +46,10 @@ io.on('connection', (socket) => {
         // Restore identity
         const identity = userIdentityStore.get(clientId);
         nickname = identity.nickname;
+        // Update last seen
+        userIdentityStore.set(clientId, { ...identity, lastSeen: Date.now() });
         console.log(`Restored identity for ${clientId}: ${nickname}`);
+
 
         // Check if there is an existing (disconnected but grace period active) user with this clientId
         // We need to find the OLD socket ID that maps to this clientId
@@ -113,7 +132,7 @@ io.on('connection', (socket) => {
         usedNicknames.add(nickname);
 
         if (clientId) {
-            userIdentityStore.set(clientId, { nickname });
+            userIdentityStore.set(clientId, { nickname, lastSeen: Date.now() });
         }
 
         users[socket.id] = {
@@ -135,8 +154,24 @@ io.on('connection', (socket) => {
 
     // Rate Limiting
     const rateLimits = {}; // { socketId: { count, lastAttempt, blockedUntil, currentChallenge: { answer, id } } }
-    const RATE_LIMIT_WINDOW = 10000; // 10 seconds
-    const RATE_LIMIT_MAX = 3; // Max 3 actions per window
+
+    function validateInput(input, type) {
+        if (!input || typeof input !== 'string') return { valid: false, error: 'Invalid input' };
+
+        switch (type) {
+            case 'nickname':
+                if (input.length > config.MAX_NICKNAME_LENGTH) return { valid: false, error: `Nickname too long (max ${config.MAX_NICKNAME_LENGTH})` };
+                if (!config.NICKNAME_REGEX.test(input)) return { valid: false, error: 'Nickname contains invalid characters' };
+                break;
+            case 'roomName':
+                if (input.length > config.MAX_ROOM_NAME_LENGTH) return { valid: false, error: `Room name too long (max ${config.MAX_ROOM_NAME_LENGTH})` };
+                break;
+            case 'message':
+                if (input.length > config.MAX_MESSAGE_LENGTH) return { valid: false, error: `Message too long (max ${config.MAX_MESSAGE_LENGTH})` };
+                break;
+        }
+        return { valid: true };
+    }
 
     function checkRateLimit(socketId, captchaAnswer) {
         const now = Date.now();
@@ -164,7 +199,7 @@ io.on('connection', (socket) => {
         }
 
         // Reset window if expired
-        if (now - limit.lastAttempt > RATE_LIMIT_WINDOW) {
+        if (now - limit.lastAttempt > config.RATE_LIMIT_WINDOW) {
             limit.count = 0;
             limit.lastAttempt = now;
         }
@@ -172,7 +207,7 @@ io.on('connection', (socket) => {
         limit.count++;
         limit.lastAttempt = now;
 
-        if (limit.count > RATE_LIMIT_MAX) {
+        if (limit.count > config.RATE_LIMIT_MAX) {
             // Block them and generate challenge
             limit.blockedUntil = now + 60000; // Block for 1 minute (or until solved)
             const num1 = Math.floor(Math.random() * 10) + 1;
@@ -189,6 +224,17 @@ io.on('connection', (socket) => {
     }
 
     socket.on('set_nickname', (newNickname, callback) => {
+        // Rate limit nickname changes
+        const check = checkRateLimit(socket.id);
+        if (!check.allowed) {
+            return callback({ success: false, error: check.error, challenge: check.challenge });
+        }
+
+        const validation = validateInput(newNickname, 'nickname');
+        if (!validation.valid) {
+            return callback({ success: false, error: validation.error });
+        }
+
         if (usedNicknames.has(newNickname)) {
             callback({ success: false, error: 'Nickname already taken' });
         } else {
@@ -199,7 +245,7 @@ io.on('connection', (socket) => {
 
             // Update persistent identity
             if (users[socket.id].clientId) {
-                userIdentityStore.set(users[socket.id].clientId, { nickname: newNickname });
+                userIdentityStore.set(users[socket.id].clientId, { nickname: newNickname, lastSeen: Date.now() });
             }
 
             callback({ success: true, nickname: newNickname });
@@ -228,6 +274,11 @@ io.on('connection', (socket) => {
         }
 
         if (!roomName) return callback({ success: false, error: 'Room name required' });
+
+        const validation = validateInput(roomName, 'roomName');
+        if (!validation.valid) {
+            return callback({ success: false, error: validation.error });
+        }
 
         // Check for duplicate name
         const isDuplicate = Object.values(rooms).some(r => r.name === roomName);
@@ -355,8 +406,23 @@ io.on('connection', (socket) => {
     socket.on('type_update', (data) => {
         const roomId = users[socket.id].roomId;
         if (roomId) {
-            // Update server-side history
+            // Rate limit chat messages (newline)
             if (data.type === 'newline') {
+                const check = checkRateLimit(socket.id);
+                if (!check.allowed) {
+                    // Silently drop or maybe emit error? 
+                    // For chat, silent drop is often better to avoid spamming the user with errors too.
+                    // But let's emit an error so client knows why.
+                    // Since type_update doesn't have a callback in our client code, we might need to emit 'error' event.
+                    // For now, just return to stop processing.
+                    return;
+                }
+
+                const validation = validateInput(data.lineContent, 'message');
+                if (!validation.valid) {
+                    return; // Drop invalid messages
+                }
+
                 const user = users[socket.id];
                 if (!user.lines) user.lines = [];
                 user.lines.push({
@@ -439,7 +505,6 @@ function leaveRoom(socket) {
 }
 
 // eslint-disable-next-line no-undef
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+server.listen(config.PORT, () => {
+    console.log(`Server running on port ${config.PORT}`);
 });

@@ -20,6 +20,20 @@ To run the project in development mode:
    npm run dev
    ```
 
+### Configuration
+
+The application uses environment variables for configuration.
+
+1.  Copy the example configuration file:
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  Edit `.env` to customize your settings:
+    -   `PORT`: Server port (default: 3000)
+    -   `CORS_ORIGIN`: Comma-separated list of allowed origins (e.g., `https://chat.example.com,http://localhost:5173`)
+    -   Rate limits and validation constants can also be overridden here.
+
 ## Repository
 [https://github.com/p4t0k/realtime-chat](https://github.com/p4t0k/realtime-chat)
 
