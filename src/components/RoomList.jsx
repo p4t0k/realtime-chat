@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { SocketContext } from '../App';
+import { SocketContext } from '../SocketContext';
 import ThemeSettings from './ThemeSettings';
 import InfoMenu from './InfoMenu';
 import CaptchaModal from './CaptchaModal';
@@ -14,6 +14,7 @@ function RoomList({ currentUser, onJoin }) {
 
     useEffect(() => {
         if (currentUser) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setNickname(currentUser.nickname);
         }
     }, [currentUser]);
@@ -110,7 +111,7 @@ function RoomList({ currentUser, onJoin }) {
         }
     };
 
-    const [now, setNow] = useState(Date.now());
+    const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -174,7 +175,7 @@ function RoomList({ currentUser, onJoin }) {
                     value={nickname}
                     onChange={(e) => {
                         const val = e.target.value;
-                        if (/^[a-zA-Z0-9_\-]*$/.test(val)) {
+                        if (/^[a-zA-Z0-9_-]*$/.test(val)) {
                             handleNicknameChange(e);
                         }
                     }}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
-import { SocketContext } from '../App';
+import { SocketContext } from '../SocketContext';
 import UserTile from './UserTile';
 import ConnectionLines from './ConnectionLines';
 import ThemeSettings from './ThemeSettings';
@@ -10,12 +10,7 @@ function ChatRoom({ room, currentUser, onLeave }) {
     const [users, setUsers] = useState(room.users || []);
     const [pendingTag, setPendingTag] = useState(null);
     console.log('ChatRoom users state:', users);
-    const [positions, setPositions] = useState({}); // { userId: { x, y, vx, vy } }
-    const [activeTags, setActiveTags] = useState({}); // { userId: [taggedNicknames] }
-    const requestRef = useRef();
-
-    useEffect(() => {
-        // Initialize positions for existing users
+    const [positions, setPositions] = useState(() => {
         const initialPositions = {};
         (room.users || []).forEach(user => {
             initialPositions[user.id] = {
@@ -25,8 +20,10 @@ function ChatRoom({ room, currentUser, onLeave }) {
                 vy: 0
             };
         });
-        setPositions(initialPositions);
-    }, []);
+        return initialPositions;
+    }); // { userId: { x, y, vx, vy } }
+    const [activeTags, setActiveTags] = useState({}); // { userId: [taggedNicknames] }
+    const requestRef = useRef();
 
     useEffect(() => {
         function onUserJoined(user) {
@@ -180,7 +177,7 @@ function ChatRoom({ room, currentUser, onLeave }) {
     // Since we use them inside the loop, we should include them in dependency array.
     // But that restarts the animation loop. That's fine.
 
-    const [now, setNow] = useState(Date.now());
+    const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
         const interval = setInterval(() => {

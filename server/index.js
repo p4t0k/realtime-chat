@@ -1,3 +1,4 @@
+/* eslint-env node */
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -13,24 +14,41 @@ const io = new Server(server, {
 });
 
 // Data Stores
+// Data Stores
 const rooms = {}; // { roomId: { id, name, users: [socketId] } }
-const users = {}; // { socketId: { id, nickname, roomId, x, y } }
+const users = {}; // { socketId: { id, nickname, roomId, x, y, clientId } }
+const userIdentityStore = new Map(); // { clientId: { nickname } }
 const usedNicknames = new Set();
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // Generate initial anonymous nickname
-    let nickname = `anon${Math.floor(Math.random() * 1000000)}`;
-    while (usedNicknames.has(nickname)) {
+    const clientId = socket.handshake.auth.clientId;
+    let nickname;
+
+    if (clientId && userIdentityStore.has(clientId)) {
+        // Restore identity
+        const identity = userIdentityStore.get(clientId);
+        nickname = identity.nickname;
+        console.log(`Restored identity for ${clientId}: ${nickname}`);
+    } else {
+        // Generate initial anonymous nickname
         nickname = `anon${Math.floor(Math.random() * 1000000)}`;
+        while (usedNicknames.has(nickname)) {
+            nickname = `anon${Math.floor(Math.random() * 1000000)}`;
+        }
+        usedNicknames.add(nickname);
+
+        if (clientId) {
+            userIdentityStore.set(clientId, { nickname });
+        }
     }
-    usedNicknames.add(nickname);
 
     users[socket.id] = {
         id: socket.id,
         nickname: nickname,
         roomId: null,
+        clientId: clientId,
         lines: [] // Store chat history
     };
 
@@ -101,10 +119,20 @@ io.on('connection', (socket) => {
         if (usedNicknames.has(newNickname)) {
             callback({ success: false, error: 'Nickname already taken' });
         } else {
-            usedNicknames.delete(users[socket.id].nickname);
+            const oldNickname = users[socket.id].nickname;
+            usedNicknames.delete(oldNickname);
             usedNicknames.add(newNickname);
             users[socket.id].nickname = newNickname;
+
+            // Update persistent identity
+            if (users[socket.id].clientId) {
+                userIdentityStore.set(users[socket.id].clientId, { nickname: newNickname });
+            }
+
             callback({ success: true, nickname: newNickname });
+
+            // Emit to self to update client state
+            socket.emit('user_updated', users[socket.id]);
 
             // Notify room if user is in one
             const roomId = users[socket.id].roomId;
@@ -209,6 +237,19 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Room is full (max 10 users)' });
         }
 
+        // Check if this client is already in the room via another socket
+        const clientId = users[socket.id].clientId;
+        if (clientId) {
+            const isAlreadyInRoom = room.users.some(socketId => {
+                const user = users[socketId];
+                return user && user.clientId === clientId && socketId !== socket.id;
+            });
+
+            if (isAlreadyInRoom) {
+                return callback({ success: false, error: 'You are already in this room from another tab or window.' });
+            }
+        }
+
         // Leave current room if any
         if (users[socket.id].roomId) {
             leaveRoom(socket);
@@ -301,6 +342,7 @@ function leaveRoom(socket) {
     }
 }
 
+// eslint-disable-next-line no-undef
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

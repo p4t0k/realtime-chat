@@ -1,12 +1,8 @@
-import React, { useState, useEffect, createContext } from 'react';
-import { io } from 'socket.io-client';
+import React, { useState, useEffect } from 'react';
+import { SocketContext, socket } from './SocketContext';
 import RoomList from './components/RoomList';
 import ChatRoom from './components/ChatRoom';
 import ErrorBoundary from './components/ErrorBoundary';
-
-export const SocketContext = createContext();
-
-const socket = io('http://localhost:3000');
 
 function App() {
   const [isConnected, setIsConnected] = useState(socket.connected);
@@ -27,14 +23,22 @@ function App() {
       setCurrentUser(user);
     }
 
+    function onUserUpdated(user) {
+      if (user.id === socket.id) {
+        setCurrentUser(user);
+      }
+    }
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('welcome', onWelcome);
+    socket.on('user_updated', onUserUpdated);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('welcome', onWelcome);
+      socket.off('user_updated', onUserUpdated);
     };
   }, []);
 

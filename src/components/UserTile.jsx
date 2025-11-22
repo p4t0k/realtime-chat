@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
-import { SocketContext } from '../App';
+import { SocketContext } from '../SocketContext';
 import TileBackground from './TileBackground';
 
 // ...
@@ -112,20 +112,47 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
 
     const [persistentTags, setPersistentTags] = useState([]);
 
+    const pushLine = useCallback((content) => {
+        const newLine = {
+            id: Date.now() + Math.random(),
+            content: content,
+            timestamp: Date.now()
+        };
+        setLines(prev => {
+            const newLines = [...prev, newLine];
+            if (newLines.length > MAX_LINES) {
+                return newLines.slice(newLines.length - MAX_LINES);
+            }
+            return newLines;
+        });
+
+        // Handle persistent tags
+        const matches = content.match(/#(\w+)/g);
+        if (matches) {
+            const newTags = matches.map(t => t.slice(1));
+            setPersistentTags(prev => [...prev, ...newTags]);
+
+            // Remove after 1 minute
+            setTimeout(() => {
+                setPersistentTags(prev => {
+                    return prev.filter(t => !newTags.includes(t));
+                });
+            }, 60000);
+        }
+    }, []);
+
     // Combine current and persistent tags and notify parent
     useEffect(() => {
         if (onTagsChange) {
             const currentMatches = currentLine.match(/#(\w+)/g);
             const currentTags = currentMatches ? currentMatches.map(t => t.slice(1)) : [];
             const allTags = [...new Set([...currentTags, ...persistentTags])];
-            // console.log(`UserTile ${user.nickname} tags update:`, allTags);
             onTagsChange(user.id, allTags);
         }
     }, [currentLine, persistentTags, onTagsChange, user.id]);
 
-    const checkTags = (text) => {
-        // Deprecated in favor of useEffect, but keeping empty if needed for existing calls to avoid refactor errors immediately
-        // We will remove calls to it in next steps or just leave it empty
+    const checkTags = () => {
+        // Deprecated
     };
 
     // Handle pending tag
@@ -137,6 +164,7 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
             // Check if it fits
             if (currentLine.length + tag.length <= MAX_CHARS_PER_LINE) {
                 const newVal = currentLine + tag;
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setCurrentLine(newVal);
                 socket.emit('type_update', { type: 'char', char: tag });
 
@@ -159,7 +187,7 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
             if (onTagConsumed) onTagConsumed();
             inputRef.current?.focus();
         }
-    }, [pendingTag, isMe, currentLine, socket, onTagConsumed]);
+    }, [pendingTag, isMe, currentLine, socket, onTagConsumed, pushLine]);
 
     // Handle incoming typing events
     useEffect(() => {
@@ -192,53 +220,10 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
 
         socket.on('user_typing', onUserTyping);
         return () => socket.off('user_typing', onUserTyping);
-    }, [socket, user.id, isMe]); // Removed onTagsChange from dependency to avoid re-bind loops if it changes
+    }, [socket, user.id, isMe, pushLine]); // Removed onTagsChange from dependency to avoid re-bind loops if it changes
 
     // Auto-newline logic removed as per user request
     // We now limit input to MAX_CHARS_PER_LINE in handleChange
-
-    const pushLine = (content) => {
-        const newLine = {
-            id: Date.now() + Math.random(),
-            content: content,
-            timestamp: Date.now()
-        };
-        setLines(prev => {
-            const newLines = [...prev, newLine];
-            if (newLines.length > MAX_LINES) {
-                return newLines.slice(newLines.length - MAX_LINES);
-            }
-            return newLines;
-        });
-
-        // Removed auto-fade timeout as per user request
-        // Lines will only disappear when pushed out by new lines
-
-        // Handle persistent tags
-        const matches = content.match(/#(\w+)/g);
-        if (matches) {
-            const newTags = matches.map(t => t.slice(1));
-            setPersistentTags(prev => [...prev, ...newTags]);
-
-            // Remove after 1 minute
-            setTimeout(() => {
-                setPersistentTags(prev => {
-                    // Remove one instance of each tag? Or just filter out?
-                    // Since we use Set for unique tags in useEffect, filtering is safe enough.
-                    // But if user typed same tag twice, we might want to keep one?
-                    // For simplicity, let's assume if it expires, it expires.
-                    // But to be safe against removing re-typed tags:
-                    // We could use a counter or timestamp. 
-                    // Simple approach: remove these specific tags.
-                    // If user typed it again 30s later, that one has its own timeout.
-                    // So we should only remove *these* instances.
-                    // But we store strings.
-                    // Let's just filter for now. If they are chatting actively, they will likely re-tag.
-                    return prev.filter(t => !newTags.includes(t));
-                });
-            }, 60000);
-        }
-    };
 
     // Focus logic
     useEffect(() => {
@@ -290,7 +275,7 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
             setCurrentLine('');
             socket.emit('type_update', { type: 'newline', lineContent: currentLine });
         }
-    }, [isMe, currentLine, socket, allUsers, user.nickname]); // Dependencies for useCallback
+    }, [isMe, currentLine, socket, allUsers, user.nickname, pushLine]); // Dependencies for useCallback
 
     const handleChange = useCallback((e) => {
         if (!isMe) return;
@@ -316,7 +301,7 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
             setCurrentLine('');
             socket.emit('type_update', { type: 'newline', lineContent: val });
         }
-    }, [isMe, currentLine, socket]);
+    }, [isMe, currentLine, socket, pushLine]);
 
     const [isHovered, setIsHovered] = useState(false);
 

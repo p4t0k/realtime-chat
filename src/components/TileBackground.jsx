@@ -41,9 +41,9 @@ const TileBackground = ({ seed }) => {
                 // "Align to center" -> Keep center relatively stable?
 
                 // Calculate distance from center (normalized 0-1)
-                const cx = c / cols - 0.5;
-                const cy = r / rows - 0.5;
-                const dist = Math.sqrt(cx * cx + cy * cy) * 2; // 0 at center, ~1.4 at corners
+                // const cx = c / cols - 0.5;
+                // const cy = r / rows - 0.5;
+                // const dist = Math.sqrt(cx * cx + cy * cy) * 2; // 0 at center, ~1.4 at corners
 
                 // Jitter amount increases towards edges for "spiky borders"
                 // Base jitter
