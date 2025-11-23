@@ -8,8 +8,12 @@ const config = {
     MAX_HTTP_BUFFER_SIZE: 1e6, // 1MB
 
     // Rate Limiting
-    RATE_LIMIT_WINDOW: 10000, // 10 seconds
-    RATE_LIMIT_MAX: 3, // Max 3 actions per window
+    // Rate Limiting
+    RATE_LIMIT_ACTION_WINDOW: 10000, // 10 seconds
+    RATE_LIMIT_ACTION_MAX: 3, // Max 3 actions per window
+
+    RATE_LIMIT_CHAT_WINDOW: 2000, // 2 seconds
+    RATE_LIMIT_CHAT_MAX: 10, // Max 10 messages per window
 
     // Input Validation
     MAX_NICKNAME_LENGTH: 20,

@@ -206,23 +206,31 @@ io.on('connection', (socket) => {
         return { valid: true };
     }
 
-    function checkRateLimit(socketId, captchaAnswer) {
+    function checkRateLimit(socketId, type = 'action', captchaAnswer) {
         const now = Date.now();
-        if (!rateLimits[socketId]) {
-            rateLimits[socketId] = { count: 0, lastAttempt: now, blockedUntil: 0 };
+        const key = `${socketId}:${type}`;
+
+        if (!rateLimits[key]) {
+            rateLimits[key] = { count: 0, windowStart: now, blockedUntil: 0 };
         }
 
-        const limit = rateLimits[socketId];
+        const limit = rateLimits[key];
+
+        // Determine config based on type
+        const windowMs = (type === 'chat' ? config.RATE_LIMIT_CHAT_WINDOW : config.RATE_LIMIT_ACTION_WINDOW) || 2000;
+        const maxCount = (type === 'chat' ? config.RATE_LIMIT_CHAT_MAX : config.RATE_LIMIT_ACTION_MAX) || 10;
 
         // Check if blocked
         if (limit.blockedUntil > now) {
-            // If they provided a CAPTCHA answer, verify it
+            // If they provided a CAPTCHA answer, verify it (only for actions usually)
             if (captchaAnswer && limit.currentChallenge) {
                 if (parseInt(captchaAnswer) === limit.currentChallenge.answer) {
                     // Correct! Reset limits
                     limit.blockedUntil = 0;
                     limit.count = 0;
                     limit.currentChallenge = null;
+                    // Reset window too
+                    limit.windowStart = now;
                     return { allowed: true };
                 } else {
                     return { allowed: false, error: 'Incorrect CAPTCHA answer' };
@@ -232,17 +240,18 @@ io.on('connection', (socket) => {
         }
 
         // Reset window if expired
-        if (now - limit.lastAttempt > config.RATE_LIMIT_WINDOW) {
+        if (now - limit.windowStart > windowMs) {
             limit.count = 0;
-            limit.lastAttempt = now;
+            limit.windowStart = now;
         }
 
         limit.count++;
-        limit.lastAttempt = now;
+        // Do NOT update windowStart here, it marks the beginning of the window
 
-        if (limit.count > config.RATE_LIMIT_MAX) {
+        if (limit.count > maxCount) {
             // Block them and generate challenge
             limit.blockedUntil = now + 60000; // Block for 1 minute (or until solved)
+
             const num1 = Math.floor(Math.random() * 10) + 1;
             const num2 = Math.floor(Math.random() * 10) + 1;
             limit.currentChallenge = {
@@ -258,7 +267,7 @@ io.on('connection', (socket) => {
 
     socket.on('set_nickname', (newNickname, callback) => {
         // Rate limit nickname changes
-        const check = checkRateLimit(socket.id);
+        const check = checkRateLimit(socket.id, 'action');
         if (!check.allowed) {
             return callback({ success: false, error: check.error, challenge: check.challenge });
         }
@@ -294,6 +303,33 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('clear_lines', (callback) => {
+        if (typeof callback === 'function') callback({ received: true });
+        if (users[socket.id]) {
+            users[socket.id].lines = [];
+            // Notify room so everyone clears this user's tile
+            if (users[socket.id].roomId) {
+                io.to(users[socket.id].roomId).emit('user_updated', users[socket.id]);
+                // Explicitly notify clients to clear lines
+                io.to(users[socket.id].roomId).emit('user_cleared', { userId: socket.id });
+
+                // Emit system message to confirm broadcast works
+                io.to(users[socket.id].roomId).emit('type_update', {
+                    userId: 'system',
+                    type: 'newline',
+                    lineContent: `System: ${users[socket.id].nickname} cleared their lines.`
+                });
+
+                // Also emit sync to clear any pending typing view immediately
+                socket.to(users[socket.id].roomId).emit('user_typing', {
+                    userId: socket.id,
+                    type: 'sync',
+                    content: ''
+                });
+            }
+        }
+    });
+
     socket.on('create_room', (roomName, captchaAnswer, callback) => {
         // Handle callback being the second argument if captchaAnswer is omitted (legacy/normal call)
         if (typeof captchaAnswer === 'function') {
@@ -301,7 +337,7 @@ io.on('connection', (socket) => {
             captchaAnswer = null;
         }
 
-        const check = checkRateLimit(socket.id, captchaAnswer);
+        const check = checkRateLimit(socket.id, 'action', captchaAnswer);
         if (!check.allowed) {
             return callback({ success: false, error: check.error, challenge: check.challenge });
         }
@@ -382,7 +418,7 @@ io.on('connection', (socket) => {
             captchaAnswer = null;
         }
 
-        const check = checkRateLimit(socket.id, captchaAnswer);
+        const check = checkRateLimit(socket.id, 'action', captchaAnswer);
         if (!check.allowed) {
             return callback({ success: false, error: check.error, challenge: check.challenge });
         }
@@ -441,7 +477,7 @@ io.on('connection', (socket) => {
         if (roomId) {
             // Rate limit chat messages (newline)
             if (data.type === 'newline') {
-                const check = checkRateLimit(socket.id);
+                const check = checkRateLimit(socket.id, 'chat');
                 if (!check.allowed) {
                     // Silently drop or maybe emit error? 
                     // For chat, silent drop is often better to avoid spamming the user with errors too.

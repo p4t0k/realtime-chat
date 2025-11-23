@@ -234,6 +234,7 @@ function ChatRoom({ room, currentUser, onLeave }) {
                             onTagConsumed={handleTagConsumed}
                             allUsers={users}
                             now={now}
+                            onLeave={onLeave}
                         />
                     )
                 })}

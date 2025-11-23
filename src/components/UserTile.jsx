@@ -7,6 +7,7 @@ import TileBackground from './TileBackground';
 
 const MAX_LINES = 6;
 const MAX_CHARS_PER_LINE = 24;
+const AVAILABLE_COMMANDS = ['/leave', '/clear', '/nick', '/help'];
 const LINE_FADE_TIME = 5000; // ms
 
 const TileContent = React.memo(({ user, isMe, lines, currentLine, onInputChange, onInputKeyDown, inputRef, now }) => {
@@ -104,13 +105,20 @@ const TileContent = React.memo(({ user, isMe, lines, currentLine, onInputChange,
     );
 });
 
-function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag, onTagConsumed, allUsers, now }) {
+function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag, onTagConsumed, allUsers, now, onLeave }) {
     const socket = useContext(SocketContext);
     const [lines, setLines] = useState(user.lines || []);
     const [currentLine, setCurrentLine] = useState('');
     const inputRef = useRef(null);
+    const isSubmittingRef = useRef(false);
+    const lastSubmittedRef = useRef('');
 
     const [persistentTags, setPersistentTags] = useState([]);
+
+    // Sync lines from user prop (e.g. when cleared remotely)
+    useEffect(() => {
+        setLines(user.lines || []);
+    }, [user.lines]);
 
     const pushLine = useCallback((content) => {
         const newLine = {
@@ -218,8 +226,19 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
             }
         }
 
+        function onUserCleared(data) {
+            if (data.userId === user.id) {
+                setLines([]);
+            }
+        }
+
         socket.on('user_typing', onUserTyping);
-        return () => socket.off('user_typing', onUserTyping);
+        socket.on('user_cleared', onUserCleared);
+
+        return () => {
+            socket.off('user_typing', onUserTyping);
+            socket.off('user_cleared', onUserCleared);
+        };
     }, [socket, user.id, isMe, pushLine]); // Removed onTagsChange from dependency to avoid re-bind loops if it changes
 
     // Auto-newline logic removed as per user request
@@ -238,6 +257,26 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
 
         if (e.key === 'Tab') {
             e.preventDefault();
+
+            // Command completion
+            if (currentLine.startsWith('/') && !currentLine.includes(' ')) {
+                const partialCommand = currentLine.trim();
+                const matches = AVAILABLE_COMMANDS.filter(cmd => cmd.startsWith(partialCommand));
+                if (matches.length > 0) {
+                    const completed = matches[0];
+                    const newVal = completed + ' ';
+                    setCurrentLine(newVal);
+                    // Sync with server/others (although commands are hidden, we sync empty or the command?
+                    // Wait, if it's a command, we hide typing.
+                    // But if the user is typing it locally, they see it.
+                    // The `handleChange` logic hides it from *others*.
+                    // So here we just update local state.
+                    // But wait, `handleChange` emits 'sync' with empty content if it starts with /.
+                    // So we should probably do the same here to be safe/consistent.
+                    socket.emit('type_update', { type: 'sync', content: '' });
+                    return;
+                }
+            }
 
             // Find the last word being typed
             const match = currentLine.match(/#(\w*)$/);
@@ -271,26 +310,113 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
 
         if (e.key === 'Enter') {
             e.preventDefault();
+
+            // Command handling
+            if (currentLine.startsWith('/')) {
+                const parts = currentLine.trim().split(' ');
+                const command = parts[0].toLowerCase();
+                const args = parts.slice(1);
+
+                // Clear input immediately to prevent sending
+                setCurrentLine('');
+                // Sync empty line to others to clear their view of our typing
+                socket.emit('type_update', { type: 'newline', lineContent: '' });
+
+                switch (command) {
+                    case '/leave':
+                        if (onLeave) onLeave();
+                        break;
+                    case '/clear':
+                        socket.emit('clear_lines');
+                        // setLines([]); // Optimistic update, but we'll rely on user_updated or just do both?
+                        // Let's do both for instant feedback
+                        setLines([]);
+                        break;
+                    case '/nick':
+                        if (args.length > 0) {
+                            const newNick = args.join(' ');
+                            socket.emit('set_nickname', newNick, (response) => {
+                                if (response.success) {
+                                    pushLine(`System: Nickname changed to ${response.nickname}`);
+                                } else {
+                                    pushLine(`System: Error - ${response.error}`);
+                                }
+                            });
+                        } else {
+                            pushLine('System: Usage: /nick <new_nickname>');
+                        }
+                        break;
+                    case '/help':
+                        pushLine('System: Commands:');
+                        pushLine('/leave - Leave room');
+                        pushLine('/clear - Clear chat');
+                        pushLine('/nick <name> - Set nick');
+                        break;
+                    default:
+                        pushLine(`System: Unknown command: ${command}`);
+                }
+                return;
+            }
+
+            // Set submitting flag to handle race condition in handleChange
+            isSubmittingRef.current = true;
+            lastSubmittedRef.current = currentLine;
+
             pushLine(currentLine);
             setCurrentLine('');
             socket.emit('type_update', { type: 'newline', lineContent: currentLine });
         }
-    }, [isMe, currentLine, socket, allUsers, user.nickname, pushLine]); // Dependencies for useCallback
+    }, [isMe, currentLine, socket, allUsers, user.nickname, pushLine, onLeave]); // Dependencies for useCallback
 
     const handleChange = useCallback((e) => {
         if (!isMe) return;
 
-        const val = e.target.value;
+        let val = e.target.value;
+
+        // Race condition fix:
+        // If we just submitted, the DOM might still have the old value + new char
+        // e.g. "oldtext" -> Enter -> "oldtextn" (where n is new char)
+        // But React state 'currentLine' is already "" (cleared in handleKeyDown)
+        // So we need to detect this and strip the old text.
+        if (isSubmittingRef.current) {
+            if (val === lastSubmittedRef.current) {
+                // Redundant input event (e.g. from Enter key) with no new text.
+                // Ignore and keep flag true to catch the actual next char.
+                return;
+            }
+
+            if (val.startsWith(lastSubmittedRef.current)) {
+                // Strip the submitted part
+                val = val.slice(lastSubmittedRef.current.length);
+            }
+            isSubmittingRef.current = false;
+        }
 
         // Enforce max length
         if (val.length > MAX_CHARS_PER_LINE) return;
 
-        // Determine diff
-        if (val.length > currentLine.length) {
-            const char = val.slice(-1);
-            socket.emit('type_update', { type: 'char', char });
-        } else if (val.length < currentLine.length) {
-            socket.emit('type_update', { type: 'backspace' });
+        const isCommand = val.startsWith('/');
+        const wasCommand = currentLine.startsWith('/');
+
+        if (isCommand) {
+            if (!wasCommand) {
+                // Just switched to command mode -> clear remote view
+                socket.emit('type_update', { type: 'sync', content: '' });
+            }
+            // Don't emit chars for commands
+        } else {
+            if (wasCommand) {
+                // Just switched from command to normal -> sync full text
+                socket.emit('type_update', { type: 'sync', content: val });
+            } else {
+                // Normal typing
+                if (val.length > currentLine.length) {
+                    const char = val.slice(-1);
+                    socket.emit('type_update', { type: 'char', char });
+                } else if (val.length < currentLine.length) {
+                    socket.emit('type_update', { type: 'backspace' });
+                }
+            }
         }
 
         setCurrentLine(val);

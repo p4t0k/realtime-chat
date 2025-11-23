@@ -55,6 +55,15 @@ function InfoMenu({ isOpen: controlledIsOpen, onToggle }) {
                             </ul>
                         </p>
                         <p><strong>4. Settings:</strong> Use the gear icon to change color themes.</p>
+
+                        <h3 style={{ fontSize: '1rem', color: 'var(--secondary-color)', marginTop: '15px' }}>Chat Commands</h3>
+                        <ul style={{ paddingLeft: '20px', marginTop: '5px' }}>
+                            <li><strong>/nick [name]</strong> - Change your nickname.</li>
+                            <li><strong>/clear</strong> - Clear your text lines.</li>
+                            <li><strong>/leave</strong> - Leave the current room.</li>
+                            <li><strong>/help</strong> - Show this help message.</li>
+                        </ul>
+                        <p style={{ fontSize: '0.9rem', opacity: 0.8 }}><em>Tip: Use <strong>Tab</strong> to autocomplete commands!</em></p>
                     </div>
                 );
             case 'cookies':
