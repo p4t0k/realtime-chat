@@ -30,16 +30,22 @@ function App() {
       }
     }
 
+    function onSessionRestored({ room, users }) {
+      setCurrentRoom({ ...room, users });
+    }
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('welcome', onWelcome);
     socket.on('user_updated', onUserUpdated);
+    socket.on('session_restored', onSessionRestored);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('welcome', onWelcome);
       socket.off('user_updated', onUserUpdated);
+      socket.off('session_restored', onSessionRestored);
     };
   }, []);
 

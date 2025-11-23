@@ -13,8 +13,18 @@ const getClientId = () => {
     return id;
 };
 
+const getTabId = () => {
+    let id = sessionStorage.getItem('chat_tab_id');
+    if (!id) {
+        id = uuidv4();
+        sessionStorage.setItem('chat_tab_id', id);
+    }
+    return id;
+};
+
 export const socket = io('http://localhost:3000', {
     auth: {
-        clientId: getClientId()
+        clientId: getClientId(),
+        tabId: getTabId()
     }
 });

@@ -20,6 +20,15 @@ function RoomList({ currentUser, onJoin }) {
     }, [currentUser]);
 
     useEffect(() => {
+        if (error) {
+            const timer = setTimeout(() => {
+                setError('');
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [error]);
+
+    useEffect(() => {
         function onRoomList(list) {
             setRooms(list);
         }

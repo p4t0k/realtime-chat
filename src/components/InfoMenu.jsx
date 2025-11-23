@@ -27,7 +27,7 @@ function InfoMenu({ isOpen: controlledIsOpen, onToggle }) {
                 return (
                     <div>
                         <h2 style={{ color: 'var(--primary-color)', marginTop: 0 }}>About Project</h2>
-                        <p>This is an anonymous realtime chat application designed to be open-minded and free.</p>
+                        <p>This is an anonymous realtime chat application designed to be open-minded and free. The term `Realtime` here reflects two things: you see what people are typing instantly, letter by letter, and the experience feels like being in a live group conversation where you naturally follow only what’s relevant to you.</p>
                         <p><strong>Rules:</strong></p>
                         <ul style={{ paddingLeft: '20px' }}>
                             <li>Behave politely.</li>

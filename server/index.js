@@ -40,6 +40,7 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     const clientId = socket.handshake.auth.clientId;
+    const tabId = socket.handshake.auth.tabId;
     let nickname;
 
     if (clientId && userIdentityStore.has(clientId)) {
@@ -51,15 +52,14 @@ io.on('connection', (socket) => {
         console.log(`Restored identity for ${clientId}: ${nickname}`);
 
 
-        // Check if there is an existing (disconnected but grace period active) user with this clientId
-        // We need to find the OLD socket ID that maps to this clientId
-        const oldSocketId = Object.keys(users).find(id => users[id].clientId === clientId);
+        // Check if there is an existing (disconnected but grace period active) user with this tabId
+        // We need to find the OLD socket ID that maps to this tabId
+        const oldSocketId = Object.keys(users).find(id => users[id].tabId === tabId);
 
         if (oldSocketId) {
             const oldUser = users[oldSocketId];
             if (oldUser.disconnectTimeout) {
                 console.log(`Restoring session for ${nickname} (was ${oldSocketId}, now ${socket.id})`);
-                clearTimeout(oldUser.disconnectTimeout);
 
                 // Transfer state
                 users[socket.id] = {
@@ -80,39 +80,70 @@ io.on('connection', (socket) => {
                         room.users = room.users.map(id => id === oldSocketId ? socket.id : id);
                         socket.join(roomId);
 
-                        // Notify room of update (optional, but good for consistency)
-                        // Actually, since we just swapped IDs, other clients might not know the new ID yet for direct messages or typing?
-                        // But we use user.id for everything. So we should probably tell them "user_updated" with new ID?
-                        // Or just "user_joined" again? 
-                        // If we send "user_joined", it might duplicate tiles if client doesn't handle it.
-                        // Our client appends to list. 
-                        // Let's send 'session_restored' to the user, and maybe 'user_updated' to others?
-                        // The issue is other clients have the OLD socket ID in their list.
-                        // We need to tell them: "User X is now Socket Y".
-                        // Easiest way: "user_left" (old) then "user_joined" (new)? 
-                        // That would cause a flicker.
-                        // Better: "user_updated" with new ID? But ID is the key.
-                        // Let's try sending "user_left" for old ID and "user_joined" for new ID for now, 
-                        // but maybe suppress the "left" notification if we can?
-                        // Actually, if we just join the room, the user is there.
-                        // But other clients still think the user is 'oldSocketId'.
-
-                        // Let's emit a special event or just standard join/leave to be safe.
-                        // Flicker is better than broken state.
+                        // Notify room of update
                         socket.to(roomId).emit('user_left', oldSocketId);
                         socket.to(roomId).emit('user_joined', users[socket.id]);
+
+                        // Notify the restored user so they can re-render the room
+                        const roomUsers = room.users.map(id => users[id]);
+                        socket.emit('session_restored', {
+                            room: {
+                                id: room.id,
+                                name: room.name,
+                                userCount: room.users.length,
+                                createdAt: room.createdAt
+                            },
+                            users: roomUsers
+                        });
                     }
                 }
             } else {
-                // Old session exists but maybe active? (Duplicate tab case handled elsewhere)
-                // Or maybe just lingering?
+                // Old session exists but is ACTIVE (Race condition: Connect happened before Disconnect or Duplicate Tab)
+                // We steal session by tabId (Reload)
+                console.log(`Stealing session from ${oldSocketId} for ${nickname} (tabId: ${tabId})`);
+
+                // Transfer state
                 users[socket.id] = {
+                    ...oldUser,
                     id: socket.id,
-                    nickname: nickname,
-                    roomId: null,
-                    clientId: clientId,
-                    lines: [] // Store chat history
+                    disconnectTimeout: null
                 };
+
+                // Update room if in one
+                if (users[socket.id].roomId) {
+                    const roomId = users[socket.id].roomId;
+                    const room = rooms[roomId];
+                    if (room) {
+                        // Replace old socket ID with new one in room.users
+                        room.users = room.users.map(id => id === oldSocketId ? socket.id : id);
+                        socket.join(roomId);
+
+                        // Notify room of update
+                        socket.to(roomId).emit('user_left', oldSocketId);
+                        socket.to(roomId).emit('user_joined', users[socket.id]);
+
+                        // Notify the restored user so they can re-render the room
+                        const roomUsers = room.users.map(id => users[id]);
+                        socket.emit('session_restored', {
+                            room: {
+                                id: room.id,
+                                name: room.name,
+                                userCount: room.users.length,
+                                createdAt: room.createdAt
+                            },
+                            users: roomUsers
+                        });
+                    }
+                }
+
+                // Force disconnect old socket
+                const oldSocket = io.sockets.sockets.get(oldSocketId);
+                if (oldSocket) {
+                    oldSocket.disconnect(true);
+                }
+
+                // Remove old user record
+                delete users[oldSocketId];
             }
         } else {
             users[socket.id] = {
@@ -120,6 +151,7 @@ io.on('connection', (socket) => {
                 nickname: nickname,
                 roomId: null,
                 clientId: clientId,
+                tabId: tabId,
                 lines: [] // Store chat history
             };
         }
@@ -140,6 +172,7 @@ io.on('connection', (socket) => {
             nickname: nickname,
             roomId: null,
             clientId: clientId,
+            tabId: tabId,
             lines: [] // Store chat history
         };
     }
@@ -445,18 +478,32 @@ io.on('connection', (socket) => {
 
         // Grace period for reconnection
         const user = users[socket.id];
-        if (user && user.clientId) {
-            console.log(`Scheduling disconnect for ${user.nickname} (${user.clientId})`);
-            user.disconnectTimeout = setTimeout(() => {
-                console.log(`Grace period expired for ${user.nickname}`);
-                leaveRoom(socket);
+        if (user && user.tabId) {
+            // Check if there is already a NEW socket for this tabId (Race condition: Connect happened before Disconnect)
+            const newSocketId = Object.keys(users).find(id => users[id].tabId === user.tabId && id !== socket.id);
+            if (newSocketId) {
+                console.log(`User ${user.nickname} reconnected with new socket ${newSocketId} for tabId ${user.tabId}. Cancelling disconnect for old socket ${socket.id}.`);
+                // If a new socket for the same tabId already exists, we don't need to schedule a disconnect for the old one.
+                // The new socket will take over. We can immediately clean up the old socket's state.
+                leaveRoom(socket); // Ensure old socket leaves room
                 if (users[socket.id]) {
                     usedNicknames.delete(users[socket.id].nickname);
                     delete users[socket.id];
                 }
-                // Also clear from identity store if we want strict cleanup? 
-                // No, keep identity for longer term persistence (e.g. refreshing page)
-            }, 15000); // 15 seconds grace period
+                return; // Exit early, no grace period needed
+            } else {
+                console.log(`Scheduling disconnect for ${user.nickname} (tabId: ${user.tabId})`);
+                user.disconnectTimeout = setTimeout(() => {
+                    console.log(`Grace period expired for ${user.nickname}`);
+                    leaveRoom(socket);
+                    if (users[socket.id]) {
+                        usedNicknames.delete(users[socket.id].nickname);
+                        delete users[socket.id];
+                    }
+                    // Also clear from identity store if we want strict cleanup? 
+                    // No, keep identity for longer term persistence (e.g. refreshing page)
+                }, 15000); // 15 seconds grace period
+            }
         } else {
             leaveRoom(socket);
             if (users[socket.id]) {
