@@ -277,6 +277,48 @@ input:focus {
   /* Keep lines visible until removed from DOM */
   opacity: 0.7;
 }
+
+/* Menu Icons */
+.menu-container {
+  position: absolute;
+  top: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.theme-menu {
+  right: 20px;
+}
+
+.info-menu {
+  right: 70px;
+}
+
+.menu-btn {
+  pointer-events: auto;
+  padding: 0;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--icon-color);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 32px;
+  height: 32px;
+  transition: all 0.2s ease;
+}
+
+.menu-btn:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color);
+}
+
 .app-version {
   position: fixed;
   bottom: 10px;
@@ -285,4 +327,80 @@ input:focus {
   opacity: 0.5;
   pointer-events: none;
   z-index: 1000;
+}
+
+@media (max-width: 600px) {
+  .user-tile {
+    width: 160px;
+    height: 130px;
+  }
+
+  /* Room List Mobile Layout */
+  .rooms-grid {
+    width: 95%;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .room-list-container {
+    padding-top: 1rem;
+    gap: 1rem;
+  }
+
+  .controls-row {
+    flex-direction: column;
+    width: 90% !important;
+    gap: 0.5rem !important;
+  }
+
+  .create-room-form {
+    width: 100%;
+  }
+
+  .search-room {
+    width: 100%;
+  }
+
+  /* Chat Tile Mobile Tweaks */
+  .user-tile-header {
+    font-size: 0.58rem;
+    /* Smaller header */
+    margin-bottom: 2px;
+  }
+
+  .user-tile-content {
+    font-size: 0.58rem;
+    /* Smaller content text to fit 24 chars */
+    line-height: 1.5;
+    /* Increased from 1.2 to fill vertical space */
+  }
+
+  /* Force input to match tile text size */
+  .user-tile input {
+    font-size: 0.58rem !important;
+    padding: 0 !important;
+    height: auto;
+  }
+
+  /* Mobile Menu Icons */
+  .menu-container {
+    top: 10px;
+  }
+
+  .theme-menu {
+    right: 10px;
+  }
+
+  .info-menu {
+    right: 45px;
+  }
+
+  .menu-btn {
+    width: 24px;
+    height: 24px;
+  }
+
+  .menu-btn svg {
+    width: 16px;
+    height: 16px;
+  }
 }

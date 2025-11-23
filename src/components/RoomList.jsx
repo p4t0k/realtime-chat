@@ -184,13 +184,13 @@ function RoomList({ currentUser, onJoin }) {
                     value={nickname}
                     onChange={(e) => {
                         const val = e.target.value;
-                        if (/^[a-zA-Z0-9_-]*$/.test(val)) {
+                        if (val.length <= 20 && /^[a-zA-Z0-9_-]*$/.test(val)) {
                             handleNicknameChange(e);
                         }
                     }}
                     onBlur={saveNickname}
                     placeholder="Your Nickname (min 4 chars)"
-                    maxLength={25}
+                    maxLength={20}
                     className={`input-highlight ${!isNicknameValid && nickname.length > 0 ? 'input-error' : ''}`}
                 />
             </div>

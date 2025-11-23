@@ -104,8 +104,8 @@ function ChatRoom({ room, currentUser, onLeave }) {
                     let { x, y, vx, vy } = newPositions[id];
 
                     // 1. Center Gravity (weak)
-                    const centerX = window.innerWidth / 2 - 150;
-                    const centerY = window.innerHeight / 2 - 100;
+                    const centerX = window.innerWidth / 2 - (window.innerWidth < 600 ? 80 : 150);
+                    const centerY = window.innerHeight / 2 - (window.innerWidth < 600 ? 65 : 100);
                     vx += (centerX - x) * 0.00002; // Reduced to very slow drift
                     vy += (centerY - y) * 0.00002;
 
@@ -134,7 +134,14 @@ function ChatRoom({ room, currentUser, onLeave }) {
                         const dx = x - other.x;
                         const dy = y - other.y;
                         const dist = Math.sqrt(dx * dx + dy * dy);
-                        const minDist = 350; // Tile width + padding
+
+                        // Responsive repulsion distance
+                        // Tile width is 160px on mobile, 200px on desktop
+                        // Padding/Gap should be added
+                        const isMobile = window.innerWidth < 600;
+                        const tileWidth = isMobile ? 160 : 200;
+                        const tileHeight = isMobile ? 130 : 150;
+                        const minDist = isMobile ? 180 : 350;
 
                         if (dist < minDist && dist > 0) {
                             const force = (minDist - dist) * 0.002; // Very gentle repulsion
@@ -154,10 +161,14 @@ function ChatRoom({ room, currentUser, onLeave }) {
                     vy *= 0.9;
 
                     // Boundaries
+                    const isMobile = window.innerWidth < 600;
+                    const tileWidth = isMobile ? 160 : 200;
+                    const tileHeight = isMobile ? 130 : 150;
+
                     if (x < 0) { x = 0; vx *= -1; }
                     if (y < 80) { y = 80; vy *= -1; } // Top margin for UI strip
-                    if (x > window.innerWidth - 300) { x = window.innerWidth - 300; vx *= -1; }
-                    if (y > window.innerHeight - 200) { y = window.innerHeight - 200; vy *= -1; }
+                    if (x > window.innerWidth - tileWidth) { x = window.innerWidth - tileWidth; vx *= -1; }
+                    if (y > window.innerHeight - tileHeight) { y = window.innerHeight - tileHeight; vy *= -1; }
 
                     newPositions[id] = { x, y, vx, vy };
                 });

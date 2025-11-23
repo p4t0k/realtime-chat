@@ -6,7 +6,7 @@ import TileBackground from './TileBackground';
 
 
 const MAX_LINES = 6;
-const MAX_CHARS_PER_LINE = 24;
+const MAX_CHARS_PER_LINE = 25;
 const AVAILABLE_COMMANDS = ['/leave', '/clear', '/nick', '/help'];
 const LINE_FADE_TIME = 5000; // ms
 
@@ -29,8 +29,9 @@ const TileContent = React.memo(({ user, isMe, lines, currentLine, onInputChange,
         if (!currentLine) return null;
 
         const safeLine = currentLine || '';
-        const normalPart = safeLine.slice(0, 20);
-        const warningPart = safeLine.slice(20);
+        const warningThreshold = MAX_CHARS_PER_LINE - 4;
+        const normalPart = safeLine.slice(0, warningThreshold);
+        const warningPart = safeLine.slice(warningThreshold);
 
         return (
             <div style={{

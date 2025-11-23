@@ -91,34 +91,10 @@ function ThemeSettings({ isOpen: controlledIsOpen, onToggle }) {
     }, [currentTheme]);
 
     return (
-        <div style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            pointerEvents: 'none' // Allow clicks to pass through empty space
-        }}>
+        <div className="menu-container theme-menu">
             <button
                 onClick={handleToggle}
-                style={{
-                    pointerEvents: 'auto', // Re-enable clicks for button
-                    padding: '6px 10px',
-                    fontSize: '1rem',
-                    background: 'var(--tile-bg)',
-                    border: '1px solid var(--tile-border)',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    color: 'var(--icon-color)',
-                    boxShadow: '0 0 5px rgba(0,0,0,0.3)',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    width: '32px',
-                    height: '32px'
-                }}
+                className="menu-btn"
             >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3"></circle>
