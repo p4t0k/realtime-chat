@@ -5,11 +5,32 @@ import ConnectionLines from './ConnectionLines';
 import ThemeSettings from './ThemeSettings';
 
 function ChatRoom({ room, currentUser, onLeave }) {
-    console.log('ChatRoom rendering', { room, currentUser });
+
     const socket = useContext(SocketContext);
     const [users, setUsers] = useState(room.users || []);
     const [pendingTag, setPendingTag] = useState(null);
-    console.log('ChatRoom users state:', users);
+    const [activityLog, setActivityLog] = useState([]);
+    const usersRef = useRef(users);
+
+    useEffect(() => {
+        usersRef.current = users;
+    }, [users]);
+
+    const addLogEntry = (message) => {
+        const now = new Date();
+        const timestamp = now.getFullYear() + '-' +
+            String(now.getMonth() + 1).padStart(2, '0') + '-' +
+            String(now.getDate()).padStart(2, '0') + ' ' +
+            String(now.getHours()).padStart(2, '0') + ':' +
+            String(now.getMinutes()).padStart(2, '0') + ':' +
+            String(now.getSeconds()).padStart(2, '0');
+
+        setActivityLog(prev => {
+            const newLog = [...prev, `${timestamp}: ${message}`];
+            return newLog.slice(-5); // Keep last 5 entries
+        });
+    };
+
     const [positions, setPositions] = useState(() => {
         const initialPositions = {};
         (room.users || []).forEach(user => {
@@ -28,6 +49,7 @@ function ChatRoom({ room, currentUser, onLeave }) {
     useEffect(() => {
         function onUserJoined(user) {
             setUsers(prev => [...prev, user]);
+            addLogEntry(`User ${user.nickname} joined the room`);
             setPositions(prev => ({
                 ...prev,
                 [user.id]: {
@@ -40,6 +62,10 @@ function ChatRoom({ room, currentUser, onLeave }) {
         }
 
         function onUserLeft(userId) {
+            const user = usersRef.current.find(u => u.id === userId);
+            if (user) {
+                addLogEntry(`User ${user.nickname} left the room`);
+            }
             setUsers(prev => prev.filter(u => u.id !== userId));
             setPositions(prev => {
                 const newPos = { ...prev };
@@ -54,6 +80,10 @@ function ChatRoom({ room, currentUser, onLeave }) {
         }
 
         function onUserUpdated(updatedUser) {
+            const oldUser = usersRef.current.find(u => u.id === updatedUser.id);
+            if (oldUser && oldUser.nickname !== updatedUser.nickname) {
+                addLogEntry(`User ${oldUser.nickname} changed to ${updatedUser.nickname}`);
+            }
             setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
         }
 
@@ -150,6 +180,25 @@ function ChatRoom({ room, currentUser, onLeave }) {
                         }
                     });
 
+                    // 4. Repulsion from Activity Log (Bottom-Left)
+                    // Log area approx: width 250px, height 150px from bottom-left
+                    const logWidth = 250;
+                    const logHeight = 150;
+                    if (x < logWidth && y > window.innerHeight - logHeight) {
+                        // Push away from the corner
+                        const distToEdgeX = x - logWidth;
+                        const distToEdgeY = y - (window.innerHeight - logHeight);
+
+                        // Simple force: push right and up
+                        // But we want to push them out of the box via the closest edge?
+                        // Or just generally repel from the corner (0, window.innerHeight)
+
+                        // Let's push them towards the center if they are in the box
+                        const force = 0.001;
+                        vx += force * 2; // Push right
+                        vy -= force * 2; // Push up
+                    }
+
 
 
                     // Apply velocity
@@ -226,13 +275,41 @@ function ChatRoom({ room, currentUser, onLeave }) {
                 </div>
             </div>
 
+            <div style={{
+                position: 'absolute',
+                bottom: 10,
+                left: 10,
+                zIndex: 90,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                alignItems: 'flex-start',
+                pointerEvents: 'none',
+                textAlign: 'left'
+            }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {activityLog.map((log, index) => (
+                        <div key={index} style={{
+                            fontSize: '0.5rem',
+                            color: '#888',
+                            opacity: 0.7,
+                            whiteSpace: 'nowrap',
+                            marginBottom: '2px',
+                            textShadow: 'none'
+                        }}>
+                            {log}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             <ConnectionLines users={users} positions={positions} activeTags={activeTags} />
 
             <div className="tiles-container">
                 {users.map(user => {
                     if (!user) return null;
                     const isMe = user.id === currentUser?.id;
-                    console.log(`Rendering tile for ${user.nickname}: user.id=${user.id}, currentUser.id=${currentUser?.id}, isMe=${isMe}`);
+
                     return (
                         <UserTile
                             key={user.id}

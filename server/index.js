@@ -298,7 +298,7 @@ io.on('connection', (socket) => {
             // Notify room if user is in one
             const roomId = users[socket.id].roomId;
             if (roomId) {
-                io.to(roomId).emit('user_updated', users[socket.id]);
+                socket.to(roomId).emit('user_updated', users[socket.id]);
             }
         }
     });

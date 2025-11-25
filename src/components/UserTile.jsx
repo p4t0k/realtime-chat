@@ -98,7 +98,7 @@ const TileContent = React.memo(({ user, isMe, lines, currentLine, onInputChange,
                             />
                         </>
                     ) : (
-                        <span>{currentLine}</span>
+                        <span>{currentLine || '\u00A0'}</span>
                     )}
                 </div>
             </div>
@@ -354,7 +354,8 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
                         pushLine('/nick <name> - Set nick');
                         break;
                     default:
-                        pushLine(`System: Unknown command: ${command}`);
+                        pushLine('System: Unknown command:');
+                        pushLine(command);
                 }
                 return;
             }
