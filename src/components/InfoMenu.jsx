@@ -37,6 +37,13 @@ function InfoMenu({ isOpen: controlledIsOpen, onToggle }) {
                             <li>Do not do anything illegal.</li>
                         </ul>
                         <p>Let's keep this space safe and fun for everyone!</p>
+                        <hr style={{ borderColor: 'var(--tile-border)', margin: '15px 0' }} />
+                        <p style={{ fontSize: '0.9rem' }}>
+                            This project is <strong>Free and Open Source Software (FOSS)</strong> licensed under the <strong>Apache 2.0 License</strong>.
+                        </p>
+                        <p style={{ fontSize: '0.9rem' }}>
+                            Source code available at: <a href="https://github.com/p4t0k/realtime-chat" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>https://github.com/p4t0k/realtime-chat</a>
+                        </p>
                     </div>
                 );
             case 'docs':

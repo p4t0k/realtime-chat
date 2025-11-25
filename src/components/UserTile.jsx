@@ -56,7 +56,13 @@ const TileContent = React.memo(({ user, isMe, lines, currentLine, onInputChange,
     return (
         <>
             <div className="user-tile-header">
-                <span>{user.nickname} <span style={{ fontSize: '0.7em', opacity: 0.7 }}>{formatTime(user.joinedAt)}</span></span>
+                <span>
+                    <span title={user.nickname}>
+                        {isMe && user.nickname.length > 12 ? user.nickname.slice(0, 12) + '…' : user.nickname}
+                    </span>
+                    {' '}
+                    <span style={{ fontSize: '0.7em', opacity: 0.7 }}>{formatTime(user.joinedAt)}</span>
+                </span>
                 {isMe && <span style={{ color: 'var(--primary-color)', fontWeight: 'bold' }}>(YOU)</span>}
             </div>
 
@@ -340,7 +346,18 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
                                 if (response.success) {
                                     pushLine(`System: Nickname changed to ${response.nickname}`);
                                 } else {
-                                    pushLine(`System: Error - ${response.error}`);
+                                    pushLine('System: Error -');
+                                    const words = response.error.split(' ');
+                                    let currentLine = '';
+                                    words.forEach(word => {
+                                        if ((currentLine + word).length >= MAX_CHARS_PER_LINE) {
+                                            pushLine(currentLine.trim());
+                                            currentLine = word + ' ';
+                                        } else {
+                                            currentLine += word + ' ';
+                                        }
+                                    });
+                                    if (currentLine) pushLine(currentLine.trim());
                                 }
                             });
                         } else {
@@ -412,11 +429,15 @@ function UserTile({ user, isMe, position, onTagsChange, onTileClick, pendingTag,
                 socket.emit('type_update', { type: 'sync', content: val });
             } else {
                 // Normal typing
-                if (val.length > currentLine.length) {
+                const diff = val.length - currentLine.length;
+                if (diff === 1) {
                     const char = val.slice(-1);
                     socket.emit('type_update', { type: 'char', char });
-                } else if (val.length < currentLine.length) {
+                } else if (diff === -1) {
                     socket.emit('type_update', { type: 'backspace' });
+                } else {
+                    // Multi-char change (paste, cut, fast delete, autocomplete)
+                    socket.emit('type_update', { type: 'sync', content: val });
                 }
             }
         }

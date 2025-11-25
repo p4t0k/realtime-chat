@@ -368,17 +368,17 @@ input:focus {
   }
 
   .user-tile-content {
-    font-size: 0.57rem;
-    /* Smaller content text to fit 24 chars */
-    line-height: 1.5;
-    /* Increased from 1.2 to fill vertical space */
-    justify-content: flex-start;
+    font-size: 0.62rem;
+    /* Smaller content text to fit 25 chars */
+    line-height: 1.4;
+    justify-content: flex-end;
     /* Anchor to top so gap is at bottom */
+    overflow: hidden;
   }
 
   /* Force input to match tile text size */
   .user-tile input {
-    font-size: 0.57rem !important;
+    font-size: 0.62rem !important;
     padding: 0 !important;
     height: auto;
     min-height: 1.5em;
