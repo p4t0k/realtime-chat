@@ -239,7 +239,7 @@ function RoomList({ currentUser, onJoin }) {
                         <RoomTileBackground seed={room.id} />
                         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem', width: '100%', height: '100%' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <h3>{room.name}</h3>
+                                <h3 title={room.name}>{room.name}</h3>
                                 <span style={{ fontSize: '0.7rem', color: '#666', fontFamily: 'monospace' }}>
                                     {formatTime(room.createdAt)}
                                 </span>

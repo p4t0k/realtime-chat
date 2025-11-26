@@ -15,7 +15,20 @@ const io = new Server(server, {
     }
 });
 
-// Data Stores
+app.use((req, res, next) => {
+    // 1) CSP for XSS protection
+    res.set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ws: wss:;");
+
+    // 2) ClickJacking protection
+    res.set("X-Frame-Options", "DENY");
+
+    // 3) Referrer Policy and other security headers
+    res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.set("X-Content-Type-Options", "nosniff");
+
+    next();
+});
+
 // Data Stores
 const rooms = {}; // { roomId: { id, name, users: [socketId] } }
 const users = {}; // { socketId: { id, nickname, roomId, x, y, clientId } }
